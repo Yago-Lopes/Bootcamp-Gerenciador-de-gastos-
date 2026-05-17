@@ -1,6 +1,7 @@
 """Views do app de gastos."""
 
 from decimal import Decimal
+import requests  # <-- Adicionado para consumir a API de moedas
 
 from django.contrib import messages
 from django.db.models import Sum
@@ -14,6 +15,22 @@ from .models import CATEGORIAS, Despesa
 def index(request):
     """Lista todas as despesas com resumo por categoria."""
     despesas = Despesa.objects.all()
+
+    # --- BLOCO DA API DE MOEDAS (Passo 3) ---
+    url = "https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL"
+    preco_dolar = "0.00"
+    preco_euro = "0.00"
+    
+    try:
+        resposta = requests.get(url, timeout=5)
+        if resposta.status_code == 200:
+            dados = resposta.json()
+            # Pega o valor de compra (bid) e formata com duas casas decimais
+            preco_dolar = f"{float(dados['USDBRL']['bid']):.2f}"
+            preco_euro = f"{float(dados['EURBRL']['bid']):.2f}"
+    except Exception as e:
+        print(f"Erro ao buscar cotação: {e}")
+    # ----------------------------------------
 
     # Filtro por categoria (opcional)
     categoria_filtro = request.GET.get("categoria", "")
@@ -40,6 +57,8 @@ def index(request):
         "categorias": CATEGORIAS,
         "categoria_filtro": categoria_filtro,
         "mes_atual": timezone.now().strftime("%B de %Y"),
+        "dolar": preco_dolar,  # <-- Enviando o valor do dólar para o HTML
+        "euro": preco_euro,    # <-- Enviando o valor do euro para o HTML
     }
     return render(request, "gastos/index.html", context)
 
@@ -65,7 +84,7 @@ def editar(request, pk):
         form = DespesaForm(request.POST, instance=despesa)
         if form.is_valid():
             form.save()
-            messages.success(request, "Despesa atualizada com sucesso!")
+            messages.success(request, "Despesa updated com sucesso!")
             return redirect("gastos:index")
     else:
         form = DespesaForm(instance=despesa)
